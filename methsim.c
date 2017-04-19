@@ -50,10 +50,10 @@ struct args {
     reghash_t *hash;
 
     // file handler point to simulated file
-    FILE *read1_fp;
-    FILE *read2_fp;
-    FILE *meth1_fp;
-    FILE *meth2_fp;
+    gzFile read1_fp;
+    gzFile read2_fp;
+    gzFile meth1_fp;
+    gzFile meth2_fp;
 
     // variants reprot, stdout for default
     FILE *report_fp;
@@ -104,7 +104,7 @@ struct args {
 
 int usage()
 {
-    fprintf(stderr, "mwgsim : Short methylated reads simulator.\n");
+    fprintf(stderr, "methsim : Short methylated reads simulator.\n");
     fprintf(stderr, "The program adapt from Liheng's whole genome short simulator wgsim.\n");
     fprintf(stderr, "Visit wgsim -> https://github.com/lh3/wgsim\n");
     fprintf(stderr, "Usage:\n");
@@ -394,14 +394,15 @@ void print_seqs(kseq_t *ks, int length, int n_pairs, struct mutseq *hap1, struct
     Q = ( args.err_rate == 0.0 ) ? 'I' : (int)(-10.0 *log(args.err_rate)/log(10.0) + 0.499) + 33;
 
     int s[2]; 
-    FILE *fp[2], *mp[2];
+    gzFile fp[2], mp[2];
     uint64_t n_sub[2] = {0, 0}, n_indel[2] = {0, 0}, n_err[2] = {0, 0}, ext_coor[2] = {0,0};
     uint8_t *temp_seq[2], *temp_ms[2];
     temp_seq[0] = (uint8_t*)calloc(max_size+2, 1);
     temp_seq[1] = (uint8_t*)calloc(max_size+2, 1);
     temp_ms[0]  = (uint8_t*)calloc(max_size+2, 1);
     temp_ms[1]  = (uint8_t*)calloc(max_size+2, 1);
-    
+    kstring_t temp1 = { 0, 0, 0};
+    kstring_t temp2 = { 0, 0, 0};
     for ( ii = 0; ii != n_pairs; ++ii ) {
         // double ran;
         int pos;
@@ -447,18 +448,24 @@ void print_seqs(kseq_t *ks, int length, int n_pairs, struct mutseq *hap1, struct
    \---------TNNNNNNNNNNNNNNNNNNNNA---------
     ---------ANNNNNNNNNNNNNNNNNNNNT---------\
    5'   read2-->                  <-- read1  3'
- */        
+ */
+
         // forward strand or reverse
         int is_strand = drand48() < 0.5 ? 1 : 0;
         if ( is_strand ) {  // forward strand
 
 #define BRANCH(_pos, x) do {                                            \
-                for (i = (_pos), k = 0; i < length && k < max_size; ) { \
+                for (ext_coor[x] = -10, i = (_pos), k = 0; i < length && k < max_size; ) { \
                     int c = seq2code4(ks->seq.s[i]);                    \
                     if ( c>= 4 )                                        \
                         goto regenerate;                                \
                     mut_t type = hap1->s[i] & mutmsk;                   \
                     int bits = hap1->s[i] >> MUT_SHIFT;                    \
+                    if ( ext_coor[x] < 0 ) {\
+                        if ( type != mut_type_none && type != mut_type_subs ) \
+                            continue;\
+                        ext_coor[x] = i;\
+                    }\
                     if ( type == mut_type_none ) {                      \
                         temp_seq[x][k] = c;                             \
                         if ( c == 1 && drand48() < (double)bits/1000.0 ) {\
@@ -499,12 +506,17 @@ void print_seqs(kseq_t *ks, int length, int n_pairs, struct mutseq *hap1, struct
             
         } else { // reverse strand
 #define BRANCH(_pos, x) do {                                            \
-                for (i = (_pos), k = 0; i < length && k < max_size; ) { \
+                for (ext_coor[x] = -10, i = (_pos), k = 0; i < length && k < max_size; ) { \
                     int c = 3-seq2code4(ks->seq.s[i]);                  \
                     if ( c>= 4 )                                        \
                         goto regenerate;                                \
                     mut_t type = hap2->s[i] & mutmsk;                   \
                     int bits = hap2->s[i] >> MUT_SHIFT;                    \
+                                        if ( ext_coor[x] < 0 ) {\
+                        if ( type != mut_type_none && type != mut_type_subs ) \
+                            continue;\
+                        ext_coor[x] = i;\
+                    }\
                     if ( type == mut_type_none ) {                      \
                         temp_seq[x][k] = c;                             \
                         if ( c == 1 && drand48() < (double)bits/1000.0 ) {\
@@ -550,33 +562,36 @@ void print_seqs(kseq_t *ks, int length, int n_pairs, struct mutseq *hap1, struct
         }
         
         for ( j = 0; j < 2; ++j ) {
-
+            
             // header
-            fprintf(fp[j], "@%s_0_0_%llu:%llu:%llu_%llu:%llu:%llu_%llx/%d\n", ks->name.s,
-                    n_err[0], n_sub[0], n_indel[0], n_err[1], n_sub[1], n_indel[1],
-                    (long long)ii, j==0? is_flip+1 : 2-is_flip);
-
-            fprintf(mp[j], "@%s_0_0_%llu:%llu:%llu_%llu:%llu:%llu_%llx/%d\n", ks->name.s,
-                    n_err[0], n_sub[0], n_indel[0], n_err[1], n_sub[1], n_indel[1],
-                    (long long)ii, j==0? is_flip+1 : 2-is_flip);
-
+            ksprintf(&temp1, "@%s_%llu_%llu_%llu:%llu:%llu_%llu:%llu:%llu_%llx/%d\n", ks->name.s, ext_coor[0]+1, ext_coor[1]+1,
+                     n_err[0], n_sub[0], n_indel[0], n_err[1], n_sub[1], n_indel[1],
+                     (long long)ii, j==0? is_flip+1 : 2-is_flip);
+            ksprintf(&temp2, "@%s_%llu_%llu_%llu:%llu:%llu_%llu:%llu:%llu_%llx/%d\n", ks->name.s, ext_coor[0]+1, ext_coor[1]+1,
+                     n_err[0], n_sub[0], n_indel[0], n_err[1], n_sub[1], n_indel[1],
+                     (long long)ii, j==0? is_flip+1 : 2-is_flip);
             
             for (i = 0; i < s[j]; ++i) {
-                fputc("ACGTN"[(int)temp_seq[j][i]], fp[j]);
-                fputc("ACGTN"[(int)temp_ms[j][i]], mp[j]);
+                kputc("ACGTN"[(int)temp_seq[j][i]], &temp1);
+                kputc("ACGTN"[(int)temp_ms[j][i]], &temp2);
             }
-            fputs("\n+\n", fp[j]);
-            fputs("\n+\n", mp[j]);
+            kputs("\n+\n", &temp1);
+            kputs("\n+\n", &temp2);
             
             for (i = 0; i < s[j]; ++i) {
-                fputc(Q, fp[j]);
-                fputc(Q, mp[j]);
+                kputc(Q, &temp1);
+                kputc(Q, &temp2);
             }
-            
-            fputc('\n', fp[j]);
-            fputc('\n', mp[j]);
+            kputc('\n', &temp1);
+            kputc('\n', &temp2);
+            gzprintf(fp[j], temp1.s);
+            gzprintf(mp[j], temp2.s);
+            temp1.l = 0;
+            temp2.l = 0;
         }
-    }    
+    }
+    free(temp1.s);
+    free(temp2.s);        
 }
 
 void generate_simulate_data()
@@ -638,10 +653,10 @@ int release_memory()
     kh_destroy(chr, args.hash);
     args.hash = NULL;
 
-    fclose(args.read1_fp);
-    fclose(args.read2_fp);
-    fclose(args.meth1_fp);
-    fclose(args.meth2_fp);
+    gzclose(args.read1_fp);
+    gzclose(args.read2_fp);
+    gzclose(args.meth1_fp);
+    gzclose(args.meth2_fp);
     fclose(args.report_fp);
     return 0;
 }
@@ -795,25 +810,25 @@ int parse_args(int ac, char **av)
     seed = get_seed();
     srand48(seed);
 
-    args.report_fp =  report_fname == NULL ? stdout : fopen(report_fname, "w");
+    args.report_fp = report_fname == NULL ? stdout : fopen(report_fname, "w");
     if ( args.report_fp == NULL ) {
         warnings("%s : %s", report_fname, strerror(errno));
         args.report_fp = stdout;
     }
-    
-    args.read1_fp = fopen(reads1_fname, "w");
+
+    args.read1_fp = gzopen(reads1_fname, "w");
     if ( args.read1_fp == NULL)
         error("%s : %s", reads1_fname, strerror(errno));
 
-    args.read2_fp = fopen(reads2_fname, "w");
+    args.read2_fp = gzopen(reads2_fname, "w");
     if ( args.read2_fp == NULL)
         error("%s : %s", reads2_fname, strerror(errno));
 
-    args.meth1_fp = fopen(meth1_fname, "w");
+    args.meth1_fp = gzopen(meth1_fname, "w");
     if ( args.meth1_fp == NULL)
         error("%s : %s", meth1_fname, strerror(errno));
 
-    args.meth2_fp = fopen(meth2_fname, "w");
+    args.meth2_fp = gzopen(meth2_fname, "w");
     if ( args.meth2_fp == NULL)
         error("%s : %s", meth2_fname, strerror(errno));
 
