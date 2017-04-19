@@ -562,7 +562,7 @@ void print_seqs(kseq_t *ks, int length, int n_pairs, struct mutseq *hap1, struct
 #undef BRANCH
             
         }
-        debug_print("%d\t%d", ext_coor[0], ext_coor[1]);
+
         for ( k = 0; k < s[1]; ++k ) {
             temp_seq[1][k] = 3 - temp_seq[1][k];
             temp_ms[1][k] = 3 - temp_ms[1][k];
