@@ -410,7 +410,7 @@ void print_seqs(kseq_t *ks, int length, int n_pairs, struct mutseq *hap1, struct
         int dist;
         int is_flip = 0;
         int k, i, j;
-
+        
       regenerate:
         // generate random start position
         do {
@@ -454,7 +454,7 @@ void print_seqs(kseq_t *ks, int length, int n_pairs, struct mutseq *hap1, struct
         // forward strand or reverse
         int is_strand = drand48() < 0.5 ? 1 : 0;
         if ( is_strand ) {  // forward strand
-
+            
 #define BRANCH(_pos, x) do {                                            \
                 for (ext_coor[x] = -10, i = (_pos), k = 0; i < length && k < max_size; ) { \
                     int c = seq2code4(ks->seq.s[i]);                    \
@@ -463,8 +463,10 @@ void print_seqs(kseq_t *ks, int length, int n_pairs, struct mutseq *hap1, struct
                     mut_t type = hap1->s[i] & mutmsk;                   \
                     int bits = hap1->s[i] >> MUT_SHIFT;                    \
                     if ( ext_coor[x] < 0 ) {\
-                        if ( type != mut_type_none && type != mut_type_subs ) \
+                        if ( type != mut_type_none && type != mut_type_subs ) { \
+                            i++;\
                             continue;\
+                        }\
                         ext_coor[x] = i;\
                     }\
                     if ( type == mut_type_none ) {                      \
@@ -504,8 +506,9 @@ void print_seqs(kseq_t *ks, int length, int n_pairs, struct mutseq *hap1, struct
             BRANCH(pos+dist-args.read2_length+1, 1);
             
 #undef BRANCH
-            
+                    
         } else { // reverse strand
+            
 #define BRANCH(_pos, x) do {                                            \
                 for (ext_coor[x] = -10, i = (_pos), k = 0; i < length && k < max_size; ) { \
                     int c = 3-seq2code4(ks->seq.s[i]);                  \
@@ -513,11 +516,13 @@ void print_seqs(kseq_t *ks, int length, int n_pairs, struct mutseq *hap1, struct
                         goto regenerate;                                \
                     mut_t type = hap2->s[i] & mutmsk;                   \
                     int bits = hap2->s[i] >> MUT_SHIFT;                    \
-                                        if ( ext_coor[x] < 0 ) {\
-                        if ( type != mut_type_none && type != mut_type_subs ) \
-                            continue;\
-                        ext_coor[x] = i;\
-                    }\
+                    if ( ext_coor[x] < 0 ) {                            \
+                        if ( type != mut_type_none && type != mut_type_subs ) { \
+                            i++;\
+                            continue;                                   \
+                        }\
+                        ext_coor[x] = i;                                \
+                    }                                                   \
                     if ( type == mut_type_none ) {                      \
                         temp_seq[x][k] = c;                             \
                         if ( c == 1 && drand48() < (double)bits/1000.0 ) {\
@@ -555,15 +560,15 @@ void print_seqs(kseq_t *ks, int length, int n_pairs, struct mutseq *hap1, struct
             BRANCH(pos+dist-args.read2_length+1, 1);
 
 #undef BRANCH
+            
         }
-
+        debug_print("%d\t%d", ext_coor[0], ext_coor[1]);
         for ( k = 0; k < s[1]; ++k ) {
             temp_seq[1][k] = 3 - temp_seq[1][k];
             temp_ms[1][k] = 3 - temp_ms[1][k];
         }
         
-        for ( j = 0; j < 2; ++j ) {
-            
+        for ( j = 0; j < 2; ++j ) {            
             // header
             fprintf(fp[j], "@%s_%d_%d_%llu:%llu:%llu_%llu:%llu:%llu_%llx/%d\n", ks->name.s, ext_coor[0]+1, ext_coor[1]+1,
                      n_err[0], n_sub[0], n_indel[0], n_err[1], n_sub[1], n_indel[1],
@@ -586,8 +591,9 @@ void print_seqs(kseq_t *ks, int length, int n_pairs, struct mutseq *hap1, struct
             fputc('\n', fp[j]);
             fputc('\n', mp[j]);
         }
+        
     }
-
+    
 }
 
 void generate_simulate_data()
