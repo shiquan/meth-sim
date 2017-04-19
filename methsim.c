@@ -563,9 +563,18 @@ void print_seqs(kseq_t *ks, int length, int n_pairs, struct mutseq *hap1, struct
             
         }
 
-        for ( k = 0; k < s[1]; ++k ) {
-            temp_seq[1][k] = 3 - temp_seq[1][k];
-            temp_ms[1][k] = 3 - temp_ms[1][k];
+        for ( k = 0; k < s[1]/2; ++k ) {
+            int c;
+            c = 3- temp_seq[1][k];
+            temp_seq[1][k] = 3 - temp_seq[1][s[1]-k-1];
+            temp_seq[1][s[1]-k-1] = c;
+            c = 3 - temp_ms[1][k];
+            temp_ms[1][k] = 3 - temp_ms[1][s[1]-k-1];
+            temp_ms[1][s[1]-k-1] = c;
+        }
+        if ( s[1] & 1 ) {
+            temp_seq[1][s[1]/2+1] = 3-temp_seq[1][s[1]/2+1];
+            temp_ms[1][s[1]/2+1] = 3-temp_ms[1][s[1]/2+1];
         }
         
         for ( j = 0; j < 2; ++j ) {            
