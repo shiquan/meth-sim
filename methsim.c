@@ -395,7 +395,8 @@ void print_seqs(kseq_t *ks, int length, int n_pairs, struct mutseq *hap1, struct
 
     int s[2]; 
     gzFile fp[2], mp[2];
-    uint64_t n_sub[2] = {0, 0}, n_indel[2] = {0, 0}, n_err[2] = {0, 0}, ext_coor[2] = {0,0};
+    uint64_t n_sub[2] = {0, 0}, n_indel[2] = {0, 0}, n_err[2] = {0, 0};
+    int ext_coor[2] = {0,0};
     uint8_t *temp_seq[2], *temp_ms[2];
     temp_seq[0] = (uint8_t*)calloc(max_size+2, 1);
     temp_seq[1] = (uint8_t*)calloc(max_size+2, 1);
@@ -564,10 +565,10 @@ void print_seqs(kseq_t *ks, int length, int n_pairs, struct mutseq *hap1, struct
         for ( j = 0; j < 2; ++j ) {
             
             // header
-            ksprintf(&temp1, "@%s_%llu_%llu_%llu:%llu:%llu_%llu:%llu:%llu_%llx/%d\n", ks->name.s, ext_coor[0]+1, ext_coor[1]+1,
+            ksprintf(&temp1, "@%s_%d_%d_%llu:%llu:%llu_%llu:%llu:%llu_%llx/%d\n", ks->name.s, ext_coor[0]+1, ext_coor[1]+1,
                      n_err[0], n_sub[0], n_indel[0], n_err[1], n_sub[1], n_indel[1],
                      (long long)ii, j==0? is_flip+1 : 2-is_flip);
-            ksprintf(&temp2, "@%s_%llu_%llu_%llu:%llu:%llu_%llu:%llu:%llu_%llx/%d\n", ks->name.s, ext_coor[0]+1, ext_coor[1]+1,
+            ksprintf(&temp2, "@%s_%d_%d_%llu:%llu:%llu_%llu:%llu:%llu_%llx/%d\n", ks->name.s, ext_coor[0]+1, ext_coor[1]+1,
                      n_err[0], n_sub[0], n_indel[0], n_err[1], n_sub[1], n_indel[1],
                      (long long)ii, j==0? is_flip+1 : 2-is_flip);
             
