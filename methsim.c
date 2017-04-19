@@ -161,7 +161,8 @@ reghash_t *load_meth_bed(const char *fname) {
         k = kh_get(chr, hash, name);
         if ( k == kh_end(hash) ) {
             int ret;
-            k = kh_put(chr, hash, name, &ret);
+            char *str = strdup(name);
+            k = kh_put(chr, hash, str, &ret);
             struct meth_chrom *chr = malloc(sizeof(struct meth_chrom));
             chr->m = chr->n = 0;
             chr->a = NULL;
@@ -179,6 +180,9 @@ reghash_t *load_meth_bed(const char *fname) {
         node->start = start;
         node->m_rate = str2int(str.s + splits[4]);
         node->strand = *(str.s + splits[5]);
+        if ( node->strand == '-' )
+            node->start ++;
+        
         chr->n++;
         str.l = 0;
     }
@@ -203,6 +207,7 @@ void sort_meth_hash(reghash_t *hash)
 
         struct meth_chrom *chr = kh_val(hash, k);
         qsort(chr->a, chr->n, sizeof(struct meth_node), cmp_func);
+        // debug_print("%s\t%d", kh_key(hash, k), chr->n);
     }
 }
 int generate_vars(const kseq_t *ks, struct mutseq *hap1, struct mutseq *hap2)
@@ -211,10 +216,11 @@ int generate_vars(const kseq_t *ks, struct mutseq *hap1, struct mutseq *hap2)
     struct meth_chrom *mchr = NULL;
     k = kh_get(chr, args.hash, ks->name.s);
     
-    if ( !kh_exist(args.hash, k))
-        return 1;
-    
-    mchr = kh_val(args.hash, k);
+    if ( kh_exist(args.hash, k)) {
+        mchr = kh_val(args.hash, k);
+    } else {
+        warnings("chromosome %s not found in methylated data.", ks->name.s);
+    }
 
     struct mutseq *ret[2];
     int i, deleting = 0, iter = 0;
@@ -226,18 +232,18 @@ int generate_vars(const kseq_t *ks, struct mutseq *hap1, struct mutseq *hap2)
     ret[1]->m = ks->seq.m;
     ret[0]->s = (mut_t*)calloc(ret[0]->m, sizeof(mut_t));
     ret[1]->s = (mut_t*)calloc(ret[0]->m, sizeof(mut_t));
-
-    for ( i = 0; i < mchr->n; ++i ) {
+    
+    for ( i = 0; mchr != NULL && i < mchr->n; ++i ) {
         struct meth_node *node = &mchr->a[i];
         if ( node->strand == '+' ) {
             if (seq2code4(ks->seq.s[node->start]) != 1 ) {
-                error("The base in the methylated position %s:%d is not a C. vs %c",
+                error("The base in the methylated position %s:%d is not a C vs %c",
                       ks->name.s, node->start+1, ks->seq.s[node->start]);
             }
             ret[0]->s[node->start] = node->m_rate << MUT_SHIFT;
         } else {
-            if ( seq2code4(ks->seq.s[node->start]) != 2 ) {
-                error("The base in the methylated position %s:%d is not a C. vs %c",
+            if ( seq2code4(ks->seq.s[node->start]) != 2) {
+                error("The base in the methylated position %s:%d is not a C vs %c",
                       ks->name.s, node->start+1, ks->seq.s[node->start]);
             }
             ret[1]->s[node->start] = node->m_rate << MUT_SHIFT;
@@ -271,7 +277,7 @@ int generate_vars(const kseq_t *ks, struct mutseq *hap1, struct mutseq *hap2)
             // substitution
             if ( drand48() >= args.indel_frac ) {
                 int c;
-                c = ((c + (int)(drand48()*3.0 + 1)) & 3) << MUT_SHIFT;
+                c = ((c + (int)(drand48()*3.0 + 1)) & mutmsk) << MUT_SHIFT;
                 if ( drand48() < 0.333333 ) {
                     ret[0]->s[i] = ret[1]->s[i] = c | mut_type_subs;
                 } else {
@@ -304,7 +310,6 @@ int generate_vars(const kseq_t *ks, struct mutseq *hap1, struct mutseq *hap2)
     }
     
     // print mutref report
-    int j;
     for ( i = 0; i != ks->seq.l; ++i ) {
         int c[3];
         c[0] = seq2code4(ks->seq.s[i]);
@@ -313,10 +318,16 @@ int generate_vars(const kseq_t *ks, struct mutseq *hap1, struct mutseq *hap2)
         
         c[1] = hap1->s[i];
         c[2] = hap2->s[i];
-
-        if ( (c[1] & mutmsk) || (c[2] & mutmsk) ) {
-            if (c[1] == c[2]) { // hom
-                
+        mut_t type1 = c[1] & mutmsk;
+        mut_t type2 = c[2] & mutmsk;
+        int bits1 = c[1] >> MUT_SHIFT;
+        int bits2 = c[2] >> MUT_SHIFT;
+        
+        if ( type1 || type2 ) {
+            if (type1 == type2) { // hom
+                if ( type1 == mut_type_subs ) {
+                    fprintf(args.report_fp, "%s\t%d\t%c\t%c\t-\n", ks->name.s, i+1, "ACGTN"[c[0]], "ACGTN"[bits2&mutmsk]);
+                }
             } else {
                 
             }
@@ -347,21 +358,22 @@ void print_seqs(kseq_t *ks, int length, int n_pairs, struct mutseq *hap1, struct
         int is_flip = 0;
         int k, i, j;
 
+      regenerate:
         // generate random start position
         do {
             dist = ran_normal((double)args.insert_size, (double)args.std_dev);
-            dist = dist > max_size ? max_size : dist;
+            dist = dist < max_size ? max_size : dist;
             pos = (int)((length-dist+1) *drand48());
             // emit all N's
             for ( i = 0; i < max_size; ++i ) { 
                 if ( seq2code4(ks->seq.s[pos+i]) >= 4 ) {
                     pos = -1;
-                    break;
+                    break;                    
                 }                    
             }                
         } while (pos < 0 || pos >= length || pos+dist-1 >= length);
 
-        debug_print("pos %u ii %d", pos, ii);
+        // debug_print("pos %u ii %d", pos, ii);
         // flip or not
         if ( drand48() < 0.5 ) {
             fp[0] = args.read1_fp;
@@ -392,9 +404,10 @@ void print_seqs(kseq_t *ks, int length, int n_pairs, struct mutseq *hap1, struct
 #define BRANCH(_pos, x) do {                                            \
                 for (i = (_pos), k = 0; i < length && k < max_size; ) { \
                     int c = seq2code4(ks->seq.s[i]);                    \
-                    assert(c < 4);                                      \
+                    if ( c>= 4 )                                        \
+                        goto regenerate;                                \
                     mut_t type = hap1->s[i] & mutmsk;                   \
-                    int bits = hap1->s[i] >> mutmsk;                    \
+                    int bits = hap1->s[i] >> MUT_SHIFT;                    \
                     if ( type == mut_type_none ) {                      \
                         temp_seq[x][k] = c;                             \
                         if ( c == 1 && drand48() < (double)bits/1000.0 ) {\
@@ -405,7 +418,7 @@ void print_seqs(kseq_t *ks, int length, int n_pairs, struct mutseq *hap1, struct
                         i++;                                            \
                         k++;                                            \
                     } else if ( type == mut_type_subs ) {               \
-                        int mut = bits & 3;                             \
+                        int mut = bits & mutmsk;                             \
                         temp_seq[x][k] = mut;                           \
                         temp_ms[x][k] = mut == 1 ? 3 : mut;          \
                         i++;                                            \
@@ -437,9 +450,10 @@ void print_seqs(kseq_t *ks, int length, int n_pairs, struct mutseq *hap1, struct
 #define BRANCH(_pos, x) do {                                            \
                 for (i = (_pos), k = 0; i < length && k < max_size; ) { \
                     int c = 3-seq2code4(ks->seq.s[i]);                  \
-                    assert(c < 4);                                      \
+                    if ( c>= 4 )                                        \
+                        goto regenerate;                                \
                     mut_t type = hap2->s[i] & mutmsk;                   \
-                    int bits = hap2->s[i] >> mutmsk;                    \
+                    int bits = hap2->s[i] >> MUT_SHIFT;                    \
                     if ( type == mut_type_none ) {                      \
                         temp_seq[x][k] = c;                             \
                         if ( c == 1 && drand48() < (double)bits/1000.0 ) {\
@@ -450,7 +464,7 @@ void print_seqs(kseq_t *ks, int length, int n_pairs, struct mutseq *hap1, struct
                         i++;                                            \
                         k++;                                            \
                     } else if ( type == mut_type_subs ) {               \
-                        int mut = bits & 3;                             \
+                        int mut = bits & mutmsk;                             \
                         temp_seq[x][k] = mut;                           \
                         temp_ms[x][k] = mut == 1 ? 3 : mut;             \
                         i++;                                            \
@@ -521,7 +535,6 @@ void generate_simulate_data()
     int n_ref = 0;    
     gzFile fp;
     kseq_t *ks;
-    struct mutseq rseq[2];
     
     fp = gzopen(args.fasta_fname, "r");
     if ( fp == NULL )
@@ -549,11 +562,14 @@ void generate_simulate_data()
             continue;
         }
         LOG_print("Generate reads for sequence %s, read pairs : %lld", ks->name.s, n_pairs);
+        struct mutseq rseq[2] = { {0, 0, 0}, {0, 0, 0}};
         // generate variants and methylation positions and print them out
         generate_vars(ks, rseq, rseq+1);
         LOG_print("Generate variants success.");
         // generate output files
         print_seqs(ks, l, n_pairs, rseq, rseq+1);
+        free(rseq[0].s);
+        free(rseq[1].s);
     }
     
 }
