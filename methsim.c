@@ -322,14 +322,64 @@ int generate_vars(const kseq_t *ks, struct mutseq *hap1, struct mutseq *hap2)
         mut_t type2 = c[2] & mutmsk;
         int bits1 = c[1] >> MUT_SHIFT;
         int bits2 = c[2] >> MUT_SHIFT;
-        
+        int d2 = 0; // d2 keeps the last end of deletion
         if ( type1 || type2 ) {
             if (type1 == type2) { // hom
                 if ( type1 == mut_type_subs ) {
                     fprintf(args.report_fp, "%s\t%d\t%c\t%c\t-\n", ks->name.s, i+1, "ACGTN"[c[0]], "ACGTN"[bits2&mutmsk]);
+                } else if ( type1 == mut_type_del ) {
+                    if ( i >= d2 ) {
+                        fprintf(args.report_fp, "%s\t%d\t", ks->name.s, i+1);
+                        for ( d2=i; d2 < ks->seq.l && hap1->s[d2] == hap2->s[d2] && (hap1->s[d2]&mutmsk) == mut_type_del; ++d2)
+                            putc("ACGTN"[seq2code4(ks->seq.s[d2])], args.report_fp);
+                        fprintf(args.report_fp, "\t-\t-\n");
+                    }
+                } else if ( type1 == mut_type_ins ) {
+                    fprintf(args.report_fp, "%s\t%d\t-\t", ks->name.s, i+1);
+                    int n = bits1>>8;
+                    while ( n > 0 ) {
+                        fputc("ACGTN"[bits1&mutmsk], args.report_fp);
+                        bits1>>=2;
+                        n--;
+                    }
+                    fprintf(args.report_fp, "\t-\n");
                 }
-            } else {
-                
+            } else { // het
+                if ( type1 == mut_type_subs || type2 == mut_type_subs) {
+                    fprintf(args.report_fp, "%s\t%d\t%c\t%c\t-\n", ks->name.s, i+1, "ACGTN"[c[0]],  "XACMGRSVTWYHKDBN"[1<<(bits1&mutmsk)|1<<(bits2&mutmsk)]);
+                } else if ( type1 == mut_type_del ) {
+                    if ( i >= d2 ) {
+                        fprintf(args.report_fp, "%s\t%d\t", ks->name.s, i+1);
+                        for ( d2=i; d2 < ks->seq.l && hap1->s[d2] != hap2->s[d2] && (hap1->s[d2]&mutmsk) == mut_type_del; ++d2)
+                            putc("ACGTN"[seq2code4(ks->seq.s[d2])], args.report_fp);
+                        fprintf(args.report_fp, "\t-\t-\n");
+                    }
+                } else if ( type2 == mut_type_del) {
+                    if ( i >= d2 ) {
+                        fprintf(args.report_fp, "%s\t%d\t", ks->name.s, i+1);
+                        for ( d2=i; d2 < ks->seq.l && hap1->s[d2] != hap2->s[d2] && (hap2->s[d2]&mutmsk) == mut_type_del; ++d2)
+                            putc("ACGTN"[seq2code4(ks->seq.s[d2])], args.report_fp);
+                        fprintf(args.report_fp, "\t-\t-\n");
+                    }                    
+                } else if ( type1 == mut_type_ins ) {
+                    fprintf(args.report_fp, "%s\t%d\t-\t", ks->name.s, i+1);
+                    int n = bits1>>8;
+                    while ( n > 0 ) {
+                        fputc("ACGTN"[bits1&mutmsk], args.report_fp);
+                        bits1>>=2;
+                        n--;
+                    }
+                    fprintf(args.report_fp, "\t-\n");
+                } else if ( type2 == mut_type_ins ) {
+                    fprintf(args.report_fp, "%s\t%d\t-\t", ks->name.s, i+1);
+                    int n = bits2>>8;
+                    while ( n > 0 ) {
+                        fputc("ACGTN"[bits2&mutmsk], args.report_fp);
+                        bits2>>=2;
+                        n--;
+                    }
+                    fprintf(args.report_fp, "\t-\n");
+                }
             }
         }
     }
