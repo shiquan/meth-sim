@@ -108,7 +108,7 @@ int usage()
     fprintf(stderr, "The program adapt from Liheng's whole genome short simulator wgsim.\n");
     fprintf(stderr, "Visit wgsim -> https://github.com/lh3/wgsim\n");
     fprintf(stderr, "Usage:\n");
-    fprintf(stderr, "wgmsim [options] <in.ref.fasta> <out.reads1.fq> <out.reads2.fq> <out.meth_reads1.fq> <out.meth_reads2.fq>\n");
+    fprintf(stderr, "methsim [options] <in.ref.fasta> <out.reads1.fq> <out.reads2.fq> <out.meth_reads1.fq> <out.meth_reads2.fq>\n");
     fprintf(stderr, "Options:  -bed         mandatory methylated bed file\n");
     fprintf(stderr, "          -report      variation report [stdout]\n");
     fprintf(stderr, "\n");
@@ -127,6 +127,7 @@ int usage()
     fprintf(stderr, "         -h            haplotype mode\n");
     fprintf(stderr, "         -help         see this message\n");
     fprintf(stderr, "Homepage:\n");
+    fprintf(stderr, "   https://github.com/shiquan/meth-sim\n");
     return 1;
 }
 
