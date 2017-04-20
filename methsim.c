@@ -340,6 +340,7 @@ int generate_vars(const kseq_t *ks, struct mutseq *hap1, struct mutseq *hap2)
                 } else if ( type1 == mut_type_ins ) {
                     fprintf(args.report_fp, "%s\t%d\t-\t", ks->name.s, i+1);
                     int n = bits1>>8;
+                    
                     while ( n > 0 ) {
                         fputc("ACGTN"[bits1&mutmsk], args.report_fp);
                         bits1>>=2;
@@ -367,6 +368,7 @@ int generate_vars(const kseq_t *ks, struct mutseq *hap1, struct mutseq *hap2)
                 } else if ( type1 == mut_type_ins ) {
                     fprintf(args.report_fp, "%s\t%d\t-\t", ks->name.s, i+1);
                     int n = bits1>>8;
+                    
                     while ( n > 0 ) {
                         fputc("ACGTN"[bits1&mutmsk], args.report_fp);
                         bits1>>=2;
@@ -427,7 +429,6 @@ void print_seqs(kseq_t *ks, int length, int n_pairs, struct mutseq *hap1, struct
             }                
         } while (pos < 0 || pos >= length || pos+dist-1 >= length);
 
-        // debug_print("pos %u ii %d", pos, ii);
         // flip or not
         if ( drand48() < 0.5 ) {
             fp[0] = args.read1_fp;
@@ -456,8 +457,8 @@ void print_seqs(kseq_t *ks, int length, int n_pairs, struct mutseq *hap1, struct
         int is_strand = drand48() < 0.5 ? 1 : 0;
         if ( is_strand ) {  // forward strand
             
-#define BRANCH(_pos, x) do {                                            \
-                for (ext_coor[x] = -10, i = (_pos), k = 0; i < length && k < max_size; ) { \
+#define BRANCH(_pos, x, iter) do {                                           \
+                for (ext_coor[x] = -10, i = (_pos), k = 0; i < length && k < s[x]; iter ) { \
                     int c = seq2code4(ks->seq.s[i]);                    \
                     if ( c>= 4 )                                        \
                         goto regenerate;                                \
@@ -465,7 +466,6 @@ void print_seqs(kseq_t *ks, int length, int n_pairs, struct mutseq *hap1, struct
                     int bits = hap1->s[i] >> MUT_SHIFT;                    \
                     if ( ext_coor[x] < 0 ) {\
                         if ( type != mut_type_none && type != mut_type_subs ) { \
-                            i++;\
                             continue;\
                         }\
                         ext_coor[x] = i;\
@@ -477,17 +477,14 @@ void print_seqs(kseq_t *ks, int length, int n_pairs, struct mutseq *hap1, struct
                         } else {                                        \
                             temp_ms[x][k] = c == 1 ? 3 : c;             \
                         }                                               \
-                        i++;                                            \
                         k++;                                            \
                     } else if ( type == mut_type_subs ) {               \
                         int mut = bits & mutmsk;                             \
                         temp_seq[x][k] = mut;                           \
                         temp_ms[x][k] = mut == 1 ? 3 : mut;          \
-                        i++;                                            \
                         k++;                                            \
                         n_sub[x]++;                                     \
                     } else if ( type == mut_type_del) {                 \
-                        i++;                                            \
                         n_indel[x]++;                                   \
                     } else if ( type == mut_type_ins) {                 \
                         int ins_num = bits>>8;                          \
@@ -500,18 +497,18 @@ void print_seqs(kseq_t *ks, int length, int n_pairs, struct mutseq *hap1, struct
                         n_indel[x]++;                                   \
                     }                                                   \
                 }                                                       \
+                if ( k != s[x] ) ext_coor[x] = -10;                     \
             } while(0)
             // read 1
-            BRANCH(pos, 0);
+            BRANCH(pos, 0, i++);
             // read 2
-            BRANCH(pos+dist-args.read2_length+1, 1);
-            
+            BRANCH(pos+dist-1, 1, i--);                        
 #undef BRANCH
                     
         } else { // reverse strand
             
-#define BRANCH(_pos, x) do {                                            \
-                for (ext_coor[x] = -10, i = (_pos), k = 0; i < length && k < max_size; ) { \
+#define BRANCH(_pos, x, iter) do {                                           \
+                for (ext_coor[x] = -10, i = (_pos), k = 0; i < length && k < s[x]; iter) { \
                     int c = 3-seq2code4(ks->seq.s[i]);                  \
                     if ( c>= 4 )                                        \
                         goto regenerate;                                \
@@ -519,7 +516,6 @@ void print_seqs(kseq_t *ks, int length, int n_pairs, struct mutseq *hap1, struct
                     int bits = hap2->s[i] >> MUT_SHIFT;                    \
                     if ( ext_coor[x] < 0 ) {                            \
                         if ( type != mut_type_none && type != mut_type_subs ) { \
-                            i++;\
                             continue;                                   \
                         }\
                         ext_coor[x] = i;                                \
@@ -531,17 +527,14 @@ void print_seqs(kseq_t *ks, int length, int n_pairs, struct mutseq *hap1, struct
                         } else {                                        \
                             temp_ms[x][k] = c == 1 ? 3 : c;             \
                         }                                               \
-                        i++;                                            \
                         k++;                                            \
                     } else if ( type == mut_type_subs ) {               \
                         int mut = bits & mutmsk;                             \
                         temp_seq[x][k] = mut;                           \
                         temp_ms[x][k] = mut == 1 ? 3 : mut;             \
-                        i++;                                            \
                         k++;                                            \
                         n_sub[x]++;                                     \
                     } else if ( type == mut_type_del) {                 \
-                        i++;                                            \
                         n_indel[x]++;                                   \
                     } else if ( type == mut_type_ins) {                 \
                         int ins_num = bits>>8;                          \
@@ -554,29 +547,36 @@ void print_seqs(kseq_t *ks, int length, int n_pairs, struct mutseq *hap1, struct
                         n_indel[x]++;                                   \
                     }                                                   \
                 }                                                       \
+                if ( k != s[x] ) ext_coor[x] = -10;                     \
             } while(0)
             // read 1
-            BRANCH(pos, 0);
+            BRANCH(pos, 0, i++);
             // read 2
-            BRANCH(pos+dist-args.read2_length+1, 1);
+            BRANCH(pos+dist-1, 1, i--);
 
-#undef BRANCH
-            
+#undef BRANCH                        
         }
+        if ( ext_coor[0] < 0 || ext_coor[1] < 0 ) {
+            --ii;
+            continue;
+        }
+        
+        /* for ( k = 0; k < s[1]/2; ++k ) { */
+        /*     int c; */
+        /*     c = 3- temp_seq[1][k]; */
+        /*     temp_seq[1][k] = 3 - temp_seq[1][s[1]-k-1]; */
+        /*     temp_seq[1][s[1]-k-1] = c; */
+        /*     c = 3 - temp_ms[1][k]; */
+        /*     temp_ms[1][k] = 3 - temp_ms[1][s[1]-k-1]; */
+        /*     temp_ms[1][s[1]-k-1] = c; */
+        /* } */
+        /* if ( s[1] & 1 ) { */
+        /*     temp_seq[1][s[1]/2+1] = 3-temp_seq[1][s[1]/2+1]; */
+        /*     temp_ms[1][s[1]/2+1] = 3-temp_ms[1][s[1]/2+1]; */
+        /* } */
 
-        for ( k = 0; k < s[1]/2; ++k ) {
-            int c;
-            c = 3- temp_seq[1][k];
-            temp_seq[1][k] = 3 - temp_seq[1][s[1]-k-1];
-            temp_seq[1][s[1]-k-1] = c;
-            c = 3 - temp_ms[1][k];
-            temp_ms[1][k] = 3 - temp_ms[1][s[1]-k-1];
-            temp_ms[1][s[1]-k-1] = c;
-        }
-        if ( s[1] & 1 ) {
-            temp_seq[1][s[1]/2+1] = 3-temp_seq[1][s[1]/2+1];
-            temp_ms[1][s[1]/2+1] = 3-temp_ms[1][s[1]/2+1];
-        }
+        for ( k = 0; k < s[1]; ++k )
+            temp_seq[1][k] = 3 - temp_seq[1][k];
         
         for ( j = 0; j < 2; ++j ) {            
             // header
