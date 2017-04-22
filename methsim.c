@@ -52,10 +52,10 @@ struct args {
     reghash_t *hash;
 
     // file handler point to simulated file
-    gzFile read1_fp;
-    gzFile read2_fp;
-    gzFile meth1_fp;
-    gzFile meth2_fp;
+    FILE * read1_fp;
+    FILE * read2_fp;
+    FILE * meth1_fp;
+    FILE * meth2_fp;
 
     // variants reprot, stdout for default
     FILE *report_fp;
@@ -313,12 +313,13 @@ int generate_vars(const kseq_t *ks, struct mutseq *hap1, struct mutseq *hap2)
     }
     
     // print mutref report
-    for ( i = 0; i != ks->seq.l; ++i ) {
+    for ( i = 0; i != ks->seq.l; ) {
         int c[3];
         c[0] = seq2code4(ks->seq.s[i]);
-        if ( c[0] >= 4 )
+        if ( c[0] >= 4 ) {
+            i++;
             continue;
-        
+        }
         c[1] = hap1->s[i];
         c[2] = hap2->s[i];
         mut_t type1 = c[1] & mutmsk;
@@ -387,6 +388,11 @@ int generate_vars(const kseq_t *ks, struct mutseq *hap1, struct mutseq *hap2)
                 }
             }
         }
+        if ( d2 >= i ) {
+            i = d2;
+        } else {
+            i++;
+        }
     }
     return 0;
 }
@@ -398,7 +404,7 @@ void print_seqs(kseq_t *ks, int length, int n_pairs, struct mutseq *hap1, struct
     Q = ( args.err_rate == 0.0 ) ? 'I' : (int)(-10.0 *log(args.err_rate)/log(10.0) + 0.499) + 33;
 
     int s[2]; 
-    gzFile fp[2], mp[2];
+    FILE* fp[2], *mp[2];
     uint64_t n_sub[2] = {0, 0}, n_indel[2] = {0, 0}, n_err[2] = {0, 0};
     int ext_coor[2] = {0,0};
     uint8_t *temp_seq[2], *temp_ms[2];
@@ -406,7 +412,7 @@ void print_seqs(kseq_t *ks, int length, int n_pairs, struct mutseq *hap1, struct
     temp_seq[1] = (uint8_t*)calloc(max_size+2, 1);
     temp_ms[0]  = (uint8_t*)calloc(max_size+2, 1);
     temp_ms[1]  = (uint8_t*)calloc(max_size+2, 1);
-    kstring_t str = {0, 0, 0};
+    //kstring_t str = {0, 0, 0};
     for ( ii = 0; ii != n_pairs; ++ii ) {
         // double ran;
         int pos;
@@ -539,9 +545,9 @@ void print_seqs(kseq_t *ks, int length, int n_pairs, struct mutseq *hap1, struct
                     } else if ( type == mut_type_ins) {                 \
                         int ins_num = bits>>8;                          \
                         for ( j = 0; j < ins_num; ++j ) {               \
-                            int mut = (bits>>(j*2))&mutmsk;             \
-                            temp_seq[x][k] = mut;                       \
-                            temp_ms[x][k] = mut == 1 ? 3 : mut;         \
+                            int mut = (bits>>((ins_num-j-1)*2))&mutmsk; \
+                            temp_seq[x][k] = 3 - mut;                       \
+                            temp_ms[x][k] = mut == 2 ? 3 : 3 - mut;         \
                             k++;                                        \
                         }                                               \
                         n_indel[x]++;                                   \
@@ -580,37 +586,31 @@ void print_seqs(kseq_t *ks, int length, int n_pairs, struct mutseq *hap1, struct
         
         for ( j = 0; j < 2; ++j ) {            
             // header
-            ksprintf(&str, "@%s_%d_%d_%llu:%llu:%llu_%llu:%llu:%llu_%llx/%d\n", ks->name.s, ext_coor[0]+1, ext_coor[1]+1,
+            fprintf(fp[j], "@%s_%d_%d_%llu:%llu:%llu_%llu:%llu:%llu_%llx/%d\n", ks->name.s, ext_coor[0]+1, ext_coor[1]+1,
                      n_err[0], n_sub[0], n_indel[0], n_err[1], n_sub[1], n_indel[1],
                      (long long)ii, j==0? is_flip+1 : 2-is_flip);            
             for (i = 0; i < s[j]; ++i)
-                kputc("ACGTN"[(int)temp_seq[j][i]], &str);            
-            kputs("\n+\n", &str);
+                fputc("ACGTN"[(int)temp_seq[j][i]], fp[j]);            
+            fputs("\n+\n", fp[j]);
             
             for (i = 0; i < s[j]; ++i) 
-                kputc(Q, &str);
-            kputc('\n', &str);
-            
-            gzputs(fp[j], str.s);
-            str.l = 0;
+                fputc(Q, fp[j]);
+            fputc('\n', fp[j]);            
             
             // methylated
-            ksprintf(&str, "@%s_%d_%d_%llu:%llu:%llu_%llu:%llu:%llu_%llx/%d\n", ks->name.s, ext_coor[0]+1, ext_coor[1]+1,
+            fprintf(mp[j], "@%s_%d_%d_%llu:%llu:%llu_%llu:%llu:%llu_%llx/%d\n", ks->name.s, ext_coor[0]+1, ext_coor[1]+1,
                     n_err[0], n_sub[0], n_indel[0], n_err[1], n_sub[1], n_indel[1],
                     (long long)ii, j==0? is_flip+1 : 2-is_flip);
             for ( i = 0; i < s[j]; ++i)
-                kputc("ACGTN"[(int)temp_ms[j][i]], &str);
-            kputs("\n+\n", &str);
+                fputc("ACGTN"[(int)temp_ms[j][i]], mp[j]);
+            fputs("\n+\n", mp[j]);
             for (i = 0; i < s[j]; ++i)
-                kputc(Q, &str);
-            kputc('\n', &str);
-            gzputs(mp[j], str.s);
-            str.l = 0;
+                fputc(Q, mp[j]);
+            fputc('\n', mp[j]);
+
         }
         
     }
-    free(str.s);
-    
 }
 
 void generate_simulate_data()
@@ -672,10 +672,10 @@ int release_memory()
     kh_destroy(chr, args.hash);
     args.hash = NULL;
 
-    gzclose(args.read1_fp);
-    gzclose(args.read2_fp);
-    gzclose(args.meth1_fp);
-    gzclose(args.meth2_fp);
+    fclose(args.read1_fp);
+    fclose(args.read2_fp);
+    fclose(args.meth1_fp);
+    fclose(args.meth2_fp);
     fclose(args.report_fp);
     return 0;
 }
@@ -835,19 +835,19 @@ int parse_args(int ac, char **av)
         args.report_fp = stdout;
     }
 
-    args.read1_fp = gzopen(reads1_fname, "w");
+    args.read1_fp = fopen(reads1_fname, "w");
     if ( args.read1_fp == NULL)
         error("%s : %s", reads1_fname, strerror(errno));
 
-    args.read2_fp = gzopen(reads2_fname, "w");
+    args.read2_fp = fopen(reads2_fname, "w");
     if ( args.read2_fp == NULL)
         error("%s : %s", reads2_fname, strerror(errno));
 
-    args.meth1_fp = gzopen(meth1_fname, "w");
+    args.meth1_fp = fopen(meth1_fname, "w");
     if ( args.meth1_fp == NULL)
         error("%s : %s", meth1_fname, strerror(errno));
 
-    args.meth2_fp = gzopen(meth2_fname, "w");
+    args.meth2_fp = fopen(meth2_fname, "w");
     if ( args.meth2_fp == NULL)
         error("%s : %s", meth2_fname, strerror(errno));
 
