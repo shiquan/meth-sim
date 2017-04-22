@@ -91,7 +91,7 @@ struct args {
     .meth1_fp = NULL,
     .meth2_fp = NULL,
     .report_fp = NULL,
-    .err_rate = 0.02,
+    .err_rate = 0.0,
     .mut_rate = 0.001,
     .indel_frac = 0.15,
     .indel_extend = 0.3,
@@ -427,7 +427,7 @@ void print_seqs(kseq_t *ks, int length, int n_pairs, struct mutseq *hap1, struct
             dist = dist < max_size ? max_size : dist;
             pos = (int)((length-dist+1) *drand48());
             // emit all N's
-            for ( i = 0; i < max_size; ++i ) { 
+            for ( i = 0; i < dist; ++i ) { 
                 if ( seq2code4(ks->seq.s[pos+i]) >= 4 ) {
                     pos = -1;
                     break;                    
@@ -463,12 +463,11 @@ void print_seqs(kseq_t *ks, int length, int n_pairs, struct mutseq *hap1, struct
         int is_strand = drand48() < 0.5 ? 1 : 0;
 
 #define BRANCH(x,start,iter, strand) do {\
-            int _i, k;                     \
-            for (_i = (start), k = 0, ext_coor[x] = -10; i>=0 && i< length && k<s[x]; iter) {\
-                int c =seq2code4(ks->seq.s[i]);\
-                if (c>=4) goto regenerate;\
-                mut_t type = strand == 1 ? hap1->s[i] & mutmsk : hap2->s[i] & mutmsk;\
-                int bits = strand == 1 ? hap1->s[i] >> MUT_SHIFT : hap2->s[i] >> MUT_SHIFT;\
+            for (i = (start), k = 0, ext_coor[x] = -10; i>=0 && i< length && k<s[x]; iter) { \
+                int c =seq2code4(ks->seq.s[i]);                         \
+                if (c>=4) goto regenerate;                              \
+                mut_t type = strand == 1 ? hap1->s[i] & mutmsk : hap2->s[i] & mutmsk; \
+                int bits = strand == 1 ? hap1->s[i] >> MUT_SHIFT : hap2->s[i] >> MUT_SHIFT; \
                 if ( ext_coor[x] < 0 ) {                                \
                     if ( type != mut_type_none && type != mut_type_subs ) { \
                         continue;                                       \
@@ -477,15 +476,25 @@ void print_seqs(kseq_t *ks, int length, int n_pairs, struct mutseq *hap1, struct
                 }                                                       \
                 if ( type == mut_type_none ) {                          \
                     temp_seq[x][k] = c;                                 \
-                    if (drand48() < (double)bits/1000.0 ) {  \
-                        if ( c== 1) {\
-                            temp_ms[x][k] = 1;                          \
-                        } else {\
-                            temp_ms[x][k] = 2;\
+                    if ( bits > 0 ) {\
+                        if (drand48() < (double)bits/1000.0 ) { \
+                            if ( c== 1) {                               \
+                                temp_ms[x][k] = 1;                      \
+                            } else {                                    \
+                                temp_ms[x][k] = 2;                      \
+                            }                                           \
+                        } else {                                        \
+                            if ( c== 1) {                               \
+                                temp_ms[x][k] =  3;                     \
+                            } else {                                    \
+                                if(c != 2)                         \
+                                    error("%d",c);\
+                                temp_ms[x][k] = 0;\
+                            }\
                         }\
                     } else {                                            \
-                        temp_ms[x][k] = c == 1 ? 3 : c;                 \
-                    }                                                   \
+                        temp_ms[x][k] = c == 1 ? 3 : c;\
+                    }\
                     k++;                                                \
                 } else if ( type == mut_type_subs ) {                   \
                     int mut = bits & mutmsk;                            \
@@ -508,11 +517,8 @@ void print_seqs(kseq_t *ks, int length, int n_pairs, struct mutseq *hap1, struct
             }                                                           \
             if ( k != s[x] ) ext_coor[x] = -10;                         \
         } while(0)
-            // read 1
-
-        
+                
 /*         if ( is_strand ) {  // forward strand */
-            
 /* #define BRANCH(_pos, x, iter) do {                                           \ */
 /*                 for (ext_coor[x] = -10, i = (_pos), k = 0; i < length && k < s[x]; iter ) { \ */
 /*                     int c = seq2code4(ks->seq.s[i]);                    \ */
@@ -614,6 +620,7 @@ void print_seqs(kseq_t *ks, int length, int n_pairs, struct mutseq *hap1, struct
 /* #undef BRANCH                         */
 /*         } */
         BRANCH(pos, 0, i++, is_strand);
+        
         BRANCH(pos+dist-1, 1, i--, is_strand);
 #undef BRANCH
         if ( ext_coor[0] < 0 || ext_coor[1] < 0 ) {
