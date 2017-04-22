@@ -461,108 +461,161 @@ void print_seqs(kseq_t *ks, int length, int n_pairs, struct mutseq *hap1, struct
 
         // forward strand or reverse
         int is_strand = drand48() < 0.5 ? 1 : 0;
-        if ( is_strand ) {  // forward strand
-            
-#define BRANCH(_pos, x, iter) do {                                           \
-                for (ext_coor[x] = -10, i = (_pos), k = 0; i < length && k < s[x]; iter ) { \
-                    int c = seq2code4(ks->seq.s[i]);                    \
-                    if ( c>= 4 )                                        \
-                        goto regenerate;                                \
-                    mut_t type = hap1->s[i] & mutmsk;                   \
-                    int bits = hap1->s[i] >> MUT_SHIFT;                    \
-                    if ( ext_coor[x] < 0 ) {\
-                        if ( type != mut_type_none && type != mut_type_subs ) { \
-                            continue;\
-                        }\
-                        ext_coor[x] = i;\
-                    }\
-                    if ( type == mut_type_none ) {                      \
-                        temp_seq[x][k] = c;                             \
-                        if ( c == 1 && drand48() < (double)bits/1000.0 ) {\
-                            temp_ms[x][k] = 1;                          \
-                        } else {                                        \
-                            temp_ms[x][k] = c == 1 ? 3 : c;             \
-                        }                                               \
-                        k++;                                            \
-                    } else if ( type == mut_type_subs ) {               \
-                        int mut = bits & mutmsk;                             \
-                        temp_seq[x][k] = mut;                           \
-                        temp_ms[x][k] = mut == 1 ? 3 : mut;          \
-                        k++;                                            \
-                        n_sub[x]++;                                     \
-                    } else if ( type == mut_type_del) {                 \
-                        n_indel[x]++;                                   \
-                    } else if ( type == mut_type_ins) {                 \
-                        int ins_num = bits>>8;                          \
-                        for ( j = 0; j < ins_num; ++j ) {               \
-                            int mut = (bits>>(j*2))&mutmsk;             \
-                            temp_seq[x][k] = mut;                       \
-                            temp_ms[x][k] = mut == 1 ? 3 : mut;         \
-                            k++;                                        \
-                        }                                               \
-                        n_indel[x]++;                                   \
+
+#define BRANCH(x,start,iter, strand) do {\
+            int _i, k;                     \
+            for (_i = (start), k = 0, ext_coor[x] = -10; i>=0 && i< length && k<s[x]; iter) {\
+                int c =seq2code4(ks->seq.s[i]);\
+                if (c>=4) goto regenerate;\
+                mut_t type = strand == 1 ? hap1->s[i] & mutmsk : hap2->s[i] & mutmsk;\
+                int bits = strand == 1 ? hap1->s[i] >> MUT_SHIFT : hap2->s[i] >> MUT_SHIFT;\
+                if ( ext_coor[x] < 0 ) {                                \
+                    if ( type != mut_type_none && type != mut_type_subs ) { \
+                        continue;                                       \
                     }                                                   \
+                    ext_coor[x] = i;                                    \
                 }                                                       \
-                if ( k != s[x] ) ext_coor[x] = -10;                     \
-            } while(0)
-            // read 1
-            BRANCH(pos, 0, i++);
-            // read 2
-            BRANCH(pos+dist-1, 1, i--);                        
-#undef BRANCH
-                    
-        } else { // reverse strand
-            
-#define BRANCH(_pos, x, iter) do {                                           \
-                for (ext_coor[x] = -10, i = (_pos), k = 0; i < length && k < s[x]; iter) { \
-                    int c =seq2code4(ks->seq.s[i]);                  \
-                    if ( c>= 4 )                                        \
-                        goto regenerate;                                \
-                    c = 3-c;                                            \
-                    mut_t type = hap2->s[i] & mutmsk;                   \
-                    int bits = hap2->s[i] >> MUT_SHIFT;                    \
-                    if ( ext_coor[x] < 0 ) {                            \
-                        if ( type != mut_type_none && type != mut_type_subs ) { \
-                            continue;                                   \
-                        }\
-                        ext_coor[x] = i;                                \
-                    }                                                   \
-                    if ( type == mut_type_none ) {                      \
-                        temp_seq[x][k] = c;                             \
-                        if ( c == 1 && drand48() < (double)bits/1000.0 ) {\
+                if ( type == mut_type_none ) {                          \
+                    temp_seq[x][k] = c;                                 \
+                    if (drand48() < (double)bits/1000.0 ) {  \
+                        if ( c== 1) {\
                             temp_ms[x][k] = 1;                          \
-                        } else {                                        \
-                            temp_ms[x][k] = c == 1 ? 3 : c;             \
-                        }                                               \
-                        k++;                                            \
-                    } else if ( type == mut_type_subs ) {               \
-                        int mut = bits & mutmsk;                             \
+                        } else {\
+                            temp_ms[x][k] = 2;\
+                        }\
+                    } else {                                            \
+                        temp_ms[x][k] = c == 1 ? 3 : c;                 \
+                    }                                                   \
+                    k++;                                                \
+                } else if ( type == mut_type_subs ) {                   \
+                    int mut = bits & mutmsk;                            \
+                    temp_seq[x][k] = mut;                               \
+                    temp_ms[x][k] = mut == 1 ? 3 : mut;                 \
+                    k++;                                                \
+                    n_sub[x]++;                                         \
+                } else if ( type == mut_type_del) {                     \
+                    n_indel[x]++;                                       \
+                } else if ( type == mut_type_ins) {                     \
+                    int ins_num = bits>>8;                              \
+                    for ( j = 0; j < ins_num; ++j ) {                   \
+                        int mut = (bits>>(j*2))&mutmsk;                 \
                         temp_seq[x][k] = mut;                           \
                         temp_ms[x][k] = mut == 1 ? 3 : mut;             \
                         k++;                                            \
-                        n_sub[x]++;                                     \
-                    } else if ( type == mut_type_del) {                 \
-                        n_indel[x]++;                                   \
-                    } else if ( type == mut_type_ins) {                 \
-                        int ins_num = bits>>8;                          \
-                        for ( j = 0; j < ins_num; ++j ) {               \
-                            int mut = (bits>>((ins_num-j-1)*2))&mutmsk; \
-                            temp_seq[x][k] = 3 - mut;                       \
-                            temp_ms[x][k] = mut == 2 ? 3 : 3 - mut;         \
-                            k++;                                        \
-                        }                                               \
-                        n_indel[x]++;                                   \
                     }                                                   \
+                    n_indel[x]++;                                       \
                 }                                                       \
-                if ( k != s[x] ) ext_coor[x] = -10;                     \
-            } while(0)
+            }                                                           \
+            if ( k != s[x] ) ext_coor[x] = -10;                         \
+        } while(0)
             // read 1
-            BRANCH(pos, 0, i++);
-            // read 2
-            BRANCH(pos+dist-1, 1, i--);
 
-#undef BRANCH                        
-        }
+        
+/*         if ( is_strand ) {  // forward strand */
+            
+/* #define BRANCH(_pos, x, iter) do {                                           \ */
+/*                 for (ext_coor[x] = -10, i = (_pos), k = 0; i < length && k < s[x]; iter ) { \ */
+/*                     int c = seq2code4(ks->seq.s[i]);                    \ */
+/*                     if ( c>= 4 )                                        \ */
+/*                         goto regenerate;                                \ */
+/*                     mut_t type = hap1->s[i] & mutmsk;                   \ */
+/*                     int bits = hap1->s[i] >> MUT_SHIFT;                    \ */
+/*                     if ( ext_coor[x] < 0 ) {\ */
+/*                         if ( type != mut_type_none && type != mut_type_subs ) { \ */
+/*                             continue;\ */
+/*                         }\ */
+/*                         ext_coor[x] = i;\ */
+/*                     }\ */
+/*                     if ( type == mut_type_none ) {                      \ */
+/*                         temp_seq[x][k] = c;                             \ */
+/*                         if ( c == 1 && drand48() < (double)bits/1000.0 ) {\ */
+/*                             temp_ms[x][k] = 1;                          \ */
+/*                         } else {                                        \ */
+/*                             temp_ms[x][k] = c == 1 ? 3 : c;             \ */
+/*                         }                                               \ */
+/*                         k++;                                            \ */
+/*                     } else if ( type == mut_type_subs ) {               \ */
+/*                         int mut = bits & mutmsk;                             \ */
+/*                         temp_seq[x][k] = mut;                           \ */
+/*                         temp_ms[x][k] = mut == 1 ? 3 : mut;          \ */
+/*                         k++;                                            \ */
+/*                         n_sub[x]++;                                     \ */
+/*                     } else if ( type == mut_type_del) {                 \ */
+/*                         n_indel[x]++;                                   \ */
+/*                     } else if ( type == mut_type_ins) {                 \ */
+/*                         int ins_num = bits>>8;                          \ */
+/*                         for ( j = 0; j < ins_num; ++j ) {               \ */
+/*                             int mut = (bits>>(j*2))&mutmsk;             \ */
+/*                             temp_seq[x][k] = mut;                       \ */
+/*                             temp_ms[x][k] = mut == 1 ? 3 : mut;         \ */
+/*                             k++;                                        \ */
+/*                         }                                               \ */
+/*                         n_indel[x]++;                                   \ */
+/*                     }                                                   \ */
+/*                 }                                                       \ */
+/*                 if ( k != s[x] ) ext_coor[x] = -10;                     \ */
+/*             } while(0) */
+/*             // read 1 */
+/*             BRANCH(pos, 0, i++); */
+/*             // read 2 */
+/*             BRANCH(pos+dist-1, 1, i--);                         */
+/* #undef BRANCH */
+                    
+/*         } else { // reverse strand */
+            
+/* #define BRANCH(_pos, x, iter) do {                                           \ */
+/*                 for (ext_coor[x] = -10, i = (_pos), k = 0; i < length && k < s[x]; iter) { \ */
+/*                     int c =seq2code4(ks->seq.s[i]);                  \ */
+/*                     if ( c>= 4 )                                        \ */
+/*                         goto regenerate;                                \ */
+/*                     c = 3-c;                                            \ */
+/*                     mut_t type = hap2->s[i] & mutmsk;                   \ */
+/*                     int bits = hap2->s[i] >> MUT_SHIFT;                    \ */
+/*                     if ( ext_coor[x] < 0 ) {                            \ */
+/*                         if ( type != mut_type_none && type != mut_type_subs ) { \ */
+/*                             continue;                                   \ */
+/*                         }\ */
+/*                         ext_coor[x] = i;                                \ */
+/*                     }                                                   \ */
+/*                     if ( type == mut_type_none ) {                      \ */
+/*                         temp_seq[x][k] = c;                             \ */
+/*                         if ( c == 1 && drand48() < (double)bits/1000.0 ) {\ */
+/*                             temp_ms[x][k] = 1;                          \ */
+/*                         } else {                                        \ */
+/*                             temp_ms[x][k] = c == 1 ? 3 : c;             \ */
+/*                         }                                               \ */
+/*                         k++;                                            \ */
+/*                     } else if ( type == mut_type_subs ) {               \ */
+/*                         int mut = bits & mutmsk;                             \ */
+/*                         temp_seq[x][k] = mut;                           \ */
+/*                         temp_ms[x][k] = mut == 1 ? 3 : mut;             \ */
+/*                         k++;                                            \ */
+/*                         n_sub[x]++;                                     \ */
+/*                     } else if ( type == mut_type_del) {                 \ */
+/*                         n_indel[x]++;                                   \ */
+/*                     } else if ( type == mut_type_ins) {                 \ */
+/*                         int ins_num = bits>>8;                          \ */
+/*                         for ( j = 0; j < ins_num; ++j ) {               \ */
+/*                             int mut = (bits>>((ins_num-j-1)*2))&mutmsk; \ */
+/*                             temp_seq[x][k] = 3 - mut;                       \ */
+/*                             temp_ms[x][k] = mut == 2 ? 3 : 3 - mut;         \ */
+/*                             k++;                                        \ */
+/*                         }                                               \ */
+/*                         n_indel[x]++;                                   \ */
+/*                     }                                                   \ */
+/*                 }                                                       \ */
+/*                 if ( k != s[x] ) ext_coor[x] = -10;                     \ */
+/*             } while(0) */
+/*             // read 1 */
+/*             BRANCH(pos, 0, i++); */
+/*             // read 2 */
+/*             BRANCH(pos+dist-1, 1, i--); */
+
+/* #undef BRANCH                         */
+/*         } */
+        BRANCH(pos, 0, i++, is_strand);
+        BRANCH(pos+dist-1, 1, i--, is_strand);
+#undef BRANCH
         if ( ext_coor[0] < 0 || ext_coor[1] < 0 ) {
             --ii;
             continue;
