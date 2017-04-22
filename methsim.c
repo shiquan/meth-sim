@@ -515,9 +515,10 @@ void print_seqs(kseq_t *ks, int length, int n_pairs, struct mutseq *hap1, struct
             
 #define BRANCH(_pos, x, iter) do {                                           \
                 for (ext_coor[x] = -10, i = (_pos), k = 0; i < length && k < s[x]; iter) { \
-                    int c = 3-seq2code4(ks->seq.s[i]);                  \
+                    int c =seq2code4(ks->seq.s[i]);                  \
                     if ( c>= 4 )                                        \
                         goto regenerate;                                \
+                    c = 3-c;                                            \
                     mut_t type = hap2->s[i] & mutmsk;                   \
                     int bits = hap2->s[i] >> MUT_SHIFT;                    \
                     if ( ext_coor[x] < 0 ) {                            \
@@ -581,16 +582,21 @@ void print_seqs(kseq_t *ks, int length, int n_pairs, struct mutseq *hap1, struct
         /*     temp_ms[1][s[1]/2+1] = 3-temp_ms[1][s[1]/2+1]; */
         /* } */
 
-        for ( k = 0; k < s[1]; ++k )
+        for ( k = 0; k < s[1]; ++k ) {
             temp_seq[1][k] = 3 - temp_seq[1][k];
-        
+            temp_ms[1][k] = 3- temp_ms[1][k];
+        }
         for ( j = 0; j < 2; ++j ) {            
             // header
             fprintf(fp[j], "@%s_%d_%d_%llu:%llu:%llu_%llu:%llu:%llu_%llx/%d\n", ks->name.s, ext_coor[0]+1, ext_coor[1]+1,
                      n_err[0], n_sub[0], n_indel[0], n_err[1], n_sub[1], n_indel[1],
                      (long long)ii, j==0? is_flip+1 : 2-is_flip);            
-            for (i = 0; i < s[j]; ++i)
-                fputc("ACGTN"[(int)temp_seq[j][i]], fp[j]);            
+            for (i = 0; i < s[j]; ++i) {
+                if (temp_seq[j][i] > 3 || temp_seq[j][i] < 0) {
+                    debug_print("%d %d %d", j, i, temp_seq[j][i]);
+                }
+                fputc("ACGTN"[(int)temp_seq[j][i]], fp[j]);
+            }
             fputs("\n+\n", fp[j]);
             
             for (i = 0; i < s[j]; ++i) 
@@ -601,8 +607,12 @@ void print_seqs(kseq_t *ks, int length, int n_pairs, struct mutseq *hap1, struct
             fprintf(mp[j], "@%s_%d_%d_%llu:%llu:%llu_%llu:%llu:%llu_%llx/%d\n", ks->name.s, ext_coor[0]+1, ext_coor[1]+1,
                     n_err[0], n_sub[0], n_indel[0], n_err[1], n_sub[1], n_indel[1],
                     (long long)ii, j==0? is_flip+1 : 2-is_flip);
-            for ( i = 0; i < s[j]; ++i)
+            for ( i = 0; i < s[j]; ++i) {
+                if (temp_ms[j][i] > 3 || temp_ms[j][i] < 0) {
+                    debug_print("%d %d %d", j, i, temp_ms[j][i]);
+                }
                 fputc("ACGTN"[(int)temp_ms[j][i]], mp[j]);
+            }
             fputs("\n+\n", mp[j]);
             for (i = 0; i < s[j]; ++i)
                 fputc(Q, mp[j]);
